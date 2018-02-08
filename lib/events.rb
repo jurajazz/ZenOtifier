@@ -37,7 +37,7 @@ class Event
   def to_hash
     res = {}
     res['what']=@what
-    res['description']=@description if @description.length>0
+    res['description']=@description if !@description.nil? and @description.length>0
     res['when']=@when
     res['notify_at']=@notify_at if (@notify_at.to_s.length>0)
     res['notify_before']=@notify_before if (@notify_before.to_s.length>0)
@@ -83,7 +83,6 @@ class Event
       end
       @when = sprintf "%04d-%02d-%02d %02d:%02d", d[1],d[2],d[3],d[4],d[5]
     end
-    puts "Repeat calculated #{@when}"
     @notify_at = @when
     if @notify_before.length>0
       time = @conv.get_sec_from_str(@when)
@@ -111,9 +110,10 @@ end
 # works in mixed units
 # ---------------------------------------------------------
 class Events
-  attr_accessor :source_file,:target_file,:reference_time,:notification_is_shown,:event_beeing_notified
+  attr_accessor :source_file,:target_file,:reference_time,:notification_is_shown,:event_beeing_notified,:verbose
   def initialize
-    puts "Events.initialize"
+    @verbose=0
+    puts "Events.initialize" if @verbose>0
     @source_file = 'events.yaml'
     @target_file = @source_file
     @conv = TimeConversions.new
@@ -124,6 +124,7 @@ class Events
     @event_beeing_notified
     @event_beeing_notified_index
     @notification_is_shown=false  # if true - checking of events is stopped because structure can be changed by notification action (e.g. snooze)
+    @last_source_file_time_loaded=0
   end
 
   def open_notification
@@ -131,27 +132,25 @@ class Events
   end
 
   def close_notification
-    puts "close_notification"
     update_event_after_change
     @notification_is_shown=false
   end
 
   def update_event_after_change
     return if !@event_beeing_notified.changed
-    puts "Saving updated event into list"
     @events[@event_beeing_notified_index] = @event_beeing_notified.to_hash
     save
   end
 
   # add new event based on events
   def add_from_edits(edits)
-    puts "add_from_edits event what:#{edits['what'].text} when:#{edits['when'].text}";
+    #puts "add_from_edits event what:#{edits['what'].text} when:#{edits['when'].text}";
     params = Hash.new
     edits.keys.each do |key|
       params[key] = edits[key].text
     end
     result = add_from_params(params)
-    puts "add_from_params returned: #{result}"
+    puts "add_from_params returned: #{result}" if @verbose>0
     if result
       # show error
       edits[result].focus()
@@ -184,31 +183,27 @@ class Events
       return 'when' if !time_when;
       event.when = @conv.get_str_from_sec(time_when)
     end
-    puts "add_from_params event when #{event.when}"
 
     # parse notify time "(30min, 2day, 1mon, 1hour [before])"
     notify = par['notify']
     if notify and notify.length>0
       event.notify_before = notify
       time_notify = @conv.parse_rel_time_str(notify)
-      puts "add_from_params parsing notify #{notify} parsed to #{time_notify}"
+      #puts "add_from_params parsing notify #{notify} parsed to #{time_notify}"
       return 'notify' if !time_notify
       event.notify_at = @conv.get_str_from_sec(@conv.get_sec_from_str(event.when) - time_notify)
     else
       event.notify_at = event.when
     end
-    puts "add_from_params setting notify: #{event.notify_at}"
 
     # parse repeat "([every] 2day, 2week, 1mon, 2year)"
     repeat = par['repeat']
     if repeat and repeat.length>0
-      puts 'add_from_params parsing repeat'
       time_repeat = @conv.parse_repeat_time_str(repeat)
       return 'repeat' if !time_repeat
       event.repeat = repeat
     end
 
-    puts 'add_from_params inserting new event to top'
     if @events
       @events.insert(0,event.to_hash)
     else
@@ -220,15 +215,19 @@ class Events
 
   # load all events from storage (YAML) to @events
   def load
-    puts "Loading events from file #{@source_file}"
+    puts "Loading events from file #{@source_file}" if @verbose>0
     File.exists?(@source_file) or throw "Event load failed - file @source_file does not exist"
     @events = YAML.load_file(@source_file);
-    puts "Events: #{@events}"
+    @last_source_file_time_loaded = File.mtime(@source_file)
+    #puts "Events: #{@events}"
+  end
+
+  def is_source_file_changed_after_load
+    return @last_source_file_time_loaded != File.mtime(@source_file)
   end
 
   # save all events stored in @events to storage (YAML)
   def save
-    puts "Events saving to #{@target_file}"
     File.open(@target_file, 'w') {|f| f.write @events.to_yaml }
     return
   end
@@ -243,15 +242,18 @@ class Events
   # immediately check (e.g. used by tests)
   def check(time_sec)
     return if @notification_is_shown
+    if is_source_file_changed_after_load
+      load # reload
+    end
     time_str = @conv.get_str_from_sec(time_sec)
-    puts "CheckEvents '#{time_str}'"
+    puts "CheckEvents '#{time_str}'" if @verbose>0
     @events.each_with_index do |ey,index|
       event = Event.new
       event.from_hash(ey)
       next if event.completed == 1 # skip completed events
-      puts "Checking event '#{event.what}' '#{event.notify_at}'"
+      puts "Checking event '#{event.what}' '#{event.notify_at}'" if @verbose>0
       if time_str >= event.notify_at
-        puts "Event #{event.what} should be notified now."
+        puts "Event #{event.what} should be notified now." if @verbose>0
         @event_beeing_notified = event
         @event_beeing_notified_index = index
         return @event_beeing_notified
