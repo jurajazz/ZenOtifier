@@ -1,24 +1,42 @@
 require 'rbconfig'
 require_relative 'lib/events'
 require_relative 'lib/time_conversions'
-
-# check OS type
-case RbConfig::CONFIG['host_os']
-when /mswin|msys|mingw|cygwin|bccwin|wince|emc/; os = 'windows';
-when /darwin|mac os/;os = 'macosx';
-when /linux/;os = 'linux';end
+require_relative 'lib/timer'
 
 # this is user interface for events notification
 Shoes.app :height=>230 do
+  # check OS type
+  case RbConfig::CONFIG['host_os']
+    when /mswin|msys|mingw|cygwin|bccwin|wince|emc/; @os = 'windows';
+    when /darwin|mac os/;@os = 'macosx';
+    when /linux/;@os = 'linux';
+  end
   @events = Events.new
   @events.verbose = 1
   @events.source_file = "#{ENV['HOME']}/.zenotifier/events.yaml"
   @events.target_file = @events.source_file
   @events.load
+  @check_timer = Timer.new(10)
+  @check_timer.set_to_expire
+  @highlight_notif_timer = Timer.new(60)
+  @next_time_range_sec = 60*60*24*3
   @last_notification_time=0 # last notification time
-  edits=Hash.new
+  @edits=Hash.new
   set_window_title('ZenOtifier')
-  @edit_left = 60; @edit_width = 200
+  keypress do |k|
+     puts "Keypress -#{k}-"
+     if k == "\n"
+       create_clicked
+     end
+     if k.to_s == "alt_e"
+       edit_all_events
+     end
+     if k.to_s == "alt_o"
+       open_edit_event
+     end
+  end
+  @top = 7; @line_h = 30;
+  @edit_left = 70; @edit_width = 200
   @desc_left = @edit_left+@edit_width
   @desc_right = @desc_left+300
   #self.style :width => 100, :height => 100
@@ -32,76 +50,115 @@ Shoes.app :height=>230 do
     ]
     items.each do |i|
       flow do
-        para i[0];
+        p = para i[0], :top => @top
         if i[1] == 'description'
           @descr_check = check do
             if @descr_check.checked
-              edits['description'].show
+              @edits['description'].show
             else
-              edits['description'].hide
+              @edits['description'].hide
             end
           end
-          edits[i[1]] = edit_box :left=> @edit_left, :width=>@desc_right-@edit_left, height: 40
-          edits[i[1]].hide
+          @descr_check.style :top => @top, :left => 45
+          @edits[i[1]] = edit_box :left=> @edit_left, :width=>@desc_right-@edit_left, :height => 40, :top => @top
+          @edits[i[1]].hide
         else
-          edits[i[1]] = edit_line :left=> @edit_left, :width=>@edit_width
-          t = para i[2]; t.style :left => @desc_left
+          @edits[i[1]] = edit_line :left=> @edit_left, :width=>@edit_width, top: @top
+          t = para i[2]; t.style :left => @desc_left, top: @top
         end
+        @top += @line_h
       end
     end
+    @top += @line_h
     flow do
-      button "Create" do
-        @events.add_from_edits(edits) and alert "Event created"
+      button "Create", :top => @top, :left => 5 do
+        create_clicked
       end
-      button "Edit all Events" do
-        if os == 'linux'
-          system "gedit #{@events.source_file}"
-        elsif os == 'windows'
-          system "start #{@events.source_file}"
-        end
+      button "Edit all Events", :top => @top, :left => 100 do
+        edit_all_events
       end
     end
+    @next_info = flow do
+      #@next_progress = progress width: 0.5, top: @top, left:@desc_left
+      @event_text = para "in 1d: Event", top: @top, left: @desc_left
+      @next_edit = button "Open", top: @top, left:@desc_right-50 do
+        open_edit_event
+      end
+    end
+    @next_info.hide
     start do
       puts "Start"
-      edits['what'].focus()
-      edits['description'].hide
+      @edits['what'].focus()
+      @edits['description'].hide
     end
     finish do
         puts "Main window finish"
     end
   end
 
+  # kind of mainloop
   animate(1) do
+    now = TimeConversions.new.get_now_sec
+    next if !@check_timer.expired
+    @check_timer.arm
     if @events.notification_is_shown
-      t = TimeConversions.new.get_now_sec
-      if t-@last_notification_time > 30
-         system "notify-send \"#{@event.what}\""
-         @last_notification_time = t
+      if @highlight_notif_timer.expired
+        @highlight_notif_timer.arm
+        system "notify-send \"#{@event.what}\"" if @os == 'linux'
       end
     else
-      @event = @events.check_from_gui(TimeConversions.new.get_now_sec)
+      @event = @events.check(now)
       if @event
         puts "Show notification window with event"
-        @events.open_notification
-        show_window(@events)
+        show_window(@events,@event)
+        next
+      end
+      @event = @events.what_is_next(now, now + @next_time_range_sec)
+      if @event
+        time_to_notif = TimeConversions.new.get_sec_from_str(@event.notify_at) - now
+        time_to = "#{time_to_notif/(60*60)}h"
+        time_to = "#{time_to_notif/(60*60*24)}d" if time_to_notif>60*60*24
+        @event_text.text = "in #{time_to}: #{@event.what}"
+        @next_info.show
+      else
+        @next_info.hide
       end
     end
   end # animate
 
-  def show_window(events)
+  def edit_all_events
+    if @os == 'linux'
+      system "gedit #{@events.source_file}"
+    elsif @os == 'windows'
+      system "start #{@events.source_file}"
+    end
+  end
+
+  def open_edit_event
+    show_window(@events,@event)
+  end
+
+  def create_clicked
+    if @events.add_from_edits(@edits)
+      alert "Event created"
+      # clean @edits after created
+      @edits.keys.each do |key|
+        @edits[key].text = ''
+      end
+    end
+  end
+
+  def show_window(events,event)
     puts "show_window"
+    @events.open_notification
     window :height=>200, :width=>450 do
-      @e = events.event_beeing_notified
+      @e = event
       set_window_title(@e.what)
       stack do
         flow do
           @snooze_time = edit_line width: 50
           button "Snooze" do
-            time = TimeConversions.new.parse_rel_time_str(@snooze_time.text)
-            puts "Snooze time #{time} sec"
-            return if !time
-            @e.do_snooze(time,0)
-            close
+            gui_snooze
           end
           para "(30min,1day,1week)"
           if @e.should_repeat
@@ -138,6 +195,22 @@ Shoes.app :height=>230 do
           events.close_notification
         end
       end # stack
+
+      keypress do |k|
+         puts "Keypress -#{k}-"
+         if k.to_s == "\n"
+           gui_snooze
+         end
+      end
+
+      def gui_snooze
+        time = TimeConversions.new.parse_rel_time_str(@snooze_time.text)
+        puts "Snooze time #{time} sec"
+        return if !time
+        @e.do_snooze(time,0)
+        close
+      end
+
     end # window
   end # def show_window
 end

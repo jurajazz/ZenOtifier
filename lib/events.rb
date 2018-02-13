@@ -118,11 +118,10 @@ class Events
     @target_file = @source_file
     @conv = TimeConversions.new
     @events = []
-    @last_time_check=0
-    @check_interval_sec=10
     @reference_time=@conv.get_now_sec
     @event_beeing_notified
     @event_beeing_notified_index
+    @event_next_index
     @notification_is_shown=false  # if true - checking of events is stopped because structure can be changed by notification action (e.g. snooze)
     @last_source_file_time_loaded=0
   end
@@ -232,13 +231,6 @@ class Events
     return
   end
 
-  # check from gui and keep low check rate (@check_interval_sec)
-  def check_from_gui(time_sec)
-    return if (time_sec - @last_time_check < @check_interval_sec)
-    @last_time_check = time_sec
-    check(time_sec)
-  end
-
   # immediately check (e.g. used by tests)
   def check(time_sec)
     return if @notification_is_shown
@@ -261,5 +253,37 @@ class Events
     end # @events.each
     nil
   end
+
+  # check what event is next in range
+  def what_is_next(time_sec,range_sec)
+    if is_source_file_changed_after_load
+      load # reload
+    end
+    time_from_str = @conv.get_str_from_sec(time_sec)
+    time_to_str = @conv.get_str_from_sec(range_sec)
+    @event_beeing_notified=nil
+    @events.each_with_index do |ey,index|
+      event = Event.new
+      event.from_hash(ey)
+      next if event.completed == 1 # skip completed events
+      next if !(event.notify_at > time_from_str and event.notify_at < time_to_str)
+      #puts "Checking what_is_next '#{event.what}' '#{event.notify_at}' max:'#{time_to_str}'" if @verbose>0
+      if @event_beeing_notified.nil?
+        @event_beeing_notified = event
+        @event_beeing_notified_index = index
+      else
+        if event.notify_at < @event_beeing_notified.notify_at
+          @event_beeing_notified = event
+          @event_beeing_notified_index = index
+        end
+      end
+    end # @events.each
+    if @event_beeing_notified
+      #puts "Event '#{next_event.what}' will be next." if @verbose>0
+      return @event_beeing_notified
+    end
+    nil
+  end
+
 
 end
