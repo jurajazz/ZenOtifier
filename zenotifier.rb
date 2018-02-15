@@ -1,24 +1,53 @@
+require 'yaml'
 require 'rbconfig'
 require_relative 'lib/events'
 require_relative 'lib/time_conversions'
 require_relative 'lib/timer'
 
+class NotifConfiguration
+  attr_accessor :ui,:color_background,:color_font
+
+  def initialize
+    @config_file = "#{ENV['HOME']}/.zenotifier/config.yaml"
+    @config = YAML.load_file(@config_file) or return
+    puts "Config #{@config}"
+    @ui = @config['user interface'] or return
+    theme_name = @ui['theme']
+    if theme_name and theme_name.length
+      # load colors
+      @ui['themes'].each do |th|
+        next if th['name'] != theme_name
+        @color_background = "##{th['back']}"
+        @color_font = "##{th['font']}"
+      end
+    end
+  end
+
+end
+
+# global vars
+$events = Events.new
+$config = NotifConfiguration.new
+
 # this is user interface for events notification
 Shoes.app :height=>230 do
+
   # check OS type
   case RbConfig::CONFIG['host_os']
     when /mswin|msys|mingw|cygwin|bccwin|wince|emc/; @os = 'windows';
     when /darwin|mac os/;@os = 'macosx';
     when /linux/;@os = 'linux';
   end
-  @events = Events.new
-  @events.verbose = 1
-  @events.source_file = "#{ENV['HOME']}/.zenotifier/events.yaml"
-  @events.target_file = @events.source_file
-  @events.load
-  @check_timer = Timer.new(10)
+
+  $events.verbose = 1
+  style Shoes::Para, stroke: $config.color_font
+  background $config.color_background
+  $events.source_file = "#{ENV['HOME']}/.zenotifier/events.yaml"
+  $events.target_file = $events.source_file
+  $events.load
+  @check_timer = NTimer.new(10)
   @check_timer.set_to_expire
-  @highlight_notif_timer = Timer.new(60)
+  @highlight_notif_timer = NTimer.new(60)
   @next_time_range_sec = 60*60*24*3
   @last_notification_time=0 # last notification time
   @edits=Hash.new
@@ -39,7 +68,6 @@ Shoes.app :height=>230 do
   @edit_left = 70; @edit_width = 200
   @desc_left = @edit_left+@edit_width
   @desc_right = @desc_left+300
-  #self.style :width => 100, :height => 100
   stack do
     items = [
       ['What','what','(Call Mike)'],
@@ -50,6 +78,7 @@ Shoes.app :height=>230 do
     ]
     items.each do |i|
       flow do
+        next if i[1]=='notify' and !$config.ui['form field notify display']
         p = para i[0], :top => @top
         if i[1] == 'description'
           @descr_check = check do
@@ -101,25 +130,25 @@ Shoes.app :height=>230 do
     now = TimeConversions.new.get_now_sec
     next if !@check_timer.expired
     @check_timer.arm
-    if @events.notification_is_shown
+    if $events.notification_is_shown
       if @highlight_notif_timer.expired
         @highlight_notif_timer.arm
         system "notify-send \"#{@event.what}\"" if @os == 'linux'
       end
     else
-      @event = @events.check(now)
+      @event = $events.check(now)
       if @event
         puts "Show notification window with event"
-        show_window(@events,@event)
+        show_window(@event)
         next
       end
-      @event = @events.what_is_next(now, now + @next_time_range_sec)
+      @event = $events.what_is_next(now, now + @next_time_range_sec)
       if @event
         time_to_notif = TimeConversions.new.get_sec_from_str(@event.notify_at) - now
         time_to = "#{time_to_notif/(60*60)}h"
-        time_to = "#{time_to_notif/(60*60*24)}d" if time_to_notif>60*60*24
-        @event_text.text = "in #{time_to}: #{@event.what}"
-        @next_info.show
+        time_to = sprintf("%.1fd",time_to_notif.to_f/(60*60*24)) if time_to_notif>60*60*24
+        @event_text.text = "#{time_to}: #{@event.what}"
+        @next_info.show if $config.ui['show next event']
       else
         @next_info.hide
       end
@@ -128,18 +157,19 @@ Shoes.app :height=>230 do
 
   def edit_all_events
     if @os == 'linux'
-      system "gedit #{@events.source_file}"
+      system "gedit #{$events.source_file}"
     elsif @os == 'windows'
-      system "start #{@events.source_file}"
+      system "start #{$events.source_file}"
     end
   end
 
   def open_edit_event
-    show_window(@events,@event)
+    #visit('/snooze_event')
+    show_window(@event)
   end
 
   def create_clicked
-    if @events.add_from_edits(@edits)
+    if $events.add_from_edits(@edits)
       alert "Event created"
       # clean @edits after created
       @edits.keys.each do |key|
@@ -148,19 +178,22 @@ Shoes.app :height=>230 do
     end
   end
 
-  def show_window(events,event)
+  def show_window(event)
     puts "show_window"
-    @events.open_notification
+    $events.open_notification
     window :height=>200, :width=>450 do
       @e = event
       set_window_title(@e.what)
-      stack do
+      s = stack do
         flow do
           @snooze_time = edit_line width: 50
+          default_period = $config.ui['default notify period']
+          @snooze_time.text = default_period if default_period and default_period.length
           button "Snooze" do
             gui_snooze
           end
-          para "(30min,1day,1week)"
+          p = para "(30min,1day,1week)"
+          p.style :stroke => '#f24' #$config.color_font
           if @e.should_repeat
             button "Done (repeat: #{@e.repeat})" do
               @e.do_repeat
@@ -183,7 +216,7 @@ Shoes.app :height=>230 do
             @edit_description.text = "#{@e.description}"
             button "Save Descr" do
               @e.description = @edit_description.text
-              puts "description #{@e.description} text:#{@edit_description.text}" if events.verbose>0
+              puts "description #{@e.description} text:#{@edit_description.text}" if $events.verbose>0
             end
           end
         end # description
@@ -192,10 +225,10 @@ Shoes.app :height=>230 do
         # finish event
         finish do
           puts "Finishing notification window"
-          events.close_notification
+          $events.close_notification
         end
       end # stack
-
+      background $config.color_background
       keypress do |k|
          puts "Keypress -#{k}-"
          if k.to_s == "\n"

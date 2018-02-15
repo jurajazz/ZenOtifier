@@ -1,5 +1,5 @@
 
-class Timer
+class NTimer
 
   def initialize(period_sec)
     set_period(period_sec)
