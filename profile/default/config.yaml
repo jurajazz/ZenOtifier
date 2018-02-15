@@ -1,0 +1,14 @@
+user interface:
+  theme: dark # dark or light
+  themes:
+  - name: dark
+    back: 222
+    font: ccc
+  - name: light
+    back: ccc
+    font: 222
+  form field notify display: no # or yes
+  default notify period: 1d # let's do it tomorrow
+  show next event: yes # no when next event should not be visible
+  show next range days: 3
+  flashing reminder period seconds: 60
