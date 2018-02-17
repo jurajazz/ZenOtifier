@@ -62,7 +62,9 @@ Shoes.app :height=>230 do
   $events.load
   @check_timer = NTimer.new(10)
   @check_timer.set_to_expire
-  @highlight_notif_timer = NTimer.new(60)
+  notif_highlight_period = $config.ui['default notify period'].to_i
+  notif_highlight_period = 60 if notif_highlight_period.nil? or notif_highlight_period<1
+  @highlight_notif_timer = NTimer.new(notif_highlight_period)
   @next_time_range_sec = 60*60*24*3
   @last_notification_time=0 # last notification time
   @edits=Hash.new
@@ -149,6 +151,7 @@ Shoes.app :height=>230 do
       if @highlight_notif_timer.expired
         @highlight_notif_timer.arm
         message = "#{@event.what}\n(by ZenOtifier)"
+        puts "Show notification #{message}" if $events.verbose>0
         if @os == 'linux'
           # based on ubuntu tool: notify-send
           system "notify-send \"#{message}\"" if @os == 'linux'
