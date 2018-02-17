@@ -7,8 +7,15 @@ user interface:
   - name: light
     back: ccc
     font: 222
+
+  # form fields
   form field notify display: no # or yes
-  default notify period: 1d # let's do it tomorrow
+
+  default notify period: 1day # let's do it tomorrow
+
+  # next event can be visible in main window
   show next event: yes # no when next event should not be visible
   show next range days: 3
+
+  # if some event is notified, it could be reminded visually (notify-send on Linux)
   flashing reminder period seconds: 60
