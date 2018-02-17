@@ -1,0 +1,6 @@
+---
+- what: Study science
+  description: https://www.khanacademy.org/science/chemistry
+  when: 2018-01-01 16:43
+  notify_at: 2018-01-01 16:43
+  completed: 1
