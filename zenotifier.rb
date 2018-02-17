@@ -148,7 +148,14 @@ Shoes.app :height=>230 do
     if $events.notification_is_shown
       if @highlight_notif_timer.expired
         @highlight_notif_timer.arm
-        system "notify-send \"#{@event.what}\"" if @os == 'linux'
+        message = "#{@event.what}\n(by ZenOtifier)"
+        if @os == 'linux'
+          # based on ubuntu tool: notify-send
+          system "notify-send \"#{message}\"" if @os == 'linux'
+        elsif @os == 'windows'
+          # based on notifu tool: https://www.paralint.com/projects/notifu
+          system "notifu /q /m \"#{message}\" /d 5000"
+        end
       end
     else
       @event = $events.check(now)
