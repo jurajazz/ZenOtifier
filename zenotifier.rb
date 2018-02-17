@@ -4,11 +4,22 @@ require_relative 'lib/events'
 require_relative 'lib/time_conversions'
 require_relative 'lib/timer'
 
+# global vars
+$datadir = "#{ENV['HOME']}/.zenotifier"
+$events = Events.new
+
 class NotifConfiguration
   attr_accessor :ui,:color_background,:color_font
 
   def initialize
-    @config_file = "#{ENV['HOME']}/.zenotifier/config.yaml"
+    @config_file = "#{$datadir}/config.yaml"
+    puts "Config file #{@config_file}"
+    if !File.exist?(@config_file)
+      # auto create default config file in user's profile
+      Dir.mkdir($datadir)
+      data = File.read('profile/default/config.yaml')
+      File.write(@config_file,data)
+    end
     @config = YAML.load_file(@config_file) or return
     puts "Config #{@config}"
     @ui = @config['user interface'] or return
@@ -22,11 +33,8 @@ class NotifConfiguration
       end
     end
   end
-
 end
 
-# global vars
-$events = Events.new
 $config = NotifConfiguration.new
 
 # this is user interface for events notification
@@ -42,7 +50,14 @@ Shoes.app :height=>230 do
   $events.verbose = 1
   style Shoes::Para, stroke: $config.color_font
   background $config.color_background
-  $events.source_file = "#{ENV['HOME']}/.zenotifier/events.yaml"
+  $events.source_file = "#{$datadir}/events.yaml"
+  if !File.exist?($events.source_file)
+    # auto create default event file in user's profile
+    data = File.read('profile/default/events.yaml')
+    File.write($events.source_file,data)
+  end
+
+
   $events.target_file = $events.source_file
   $events.load
   @check_timer = NTimer.new(10)
@@ -184,6 +199,8 @@ Shoes.app :height=>230 do
     window :height=>200, :width=>450 do
       @e = event
       set_window_title(@e.what)
+      background $config.color_background
+      style Shoes::Para, stroke: $config.color_font
       s = stack do
         flow do
           @snooze_time = edit_line width: 50
@@ -192,8 +209,7 @@ Shoes.app :height=>230 do
           button "Snooze" do
             gui_snooze
           end
-          p = para "(30min,1day,1week)"
-          p.style :stroke => '#f24' #$config.color_font
+          para "(30min,1day,1week)"
           if @e.should_repeat
             button "Done (repeat: #{@e.repeat})" do
               @e.do_repeat
@@ -228,7 +244,6 @@ Shoes.app :height=>230 do
           $events.close_notification
         end
       end # stack
-      background $config.color_background
       keypress do |k|
          puts "Keypress -#{k}-"
          if k.to_s == "\n"
