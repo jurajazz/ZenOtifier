@@ -39,6 +39,10 @@ Thanks to all inspiration projects:
 * [mccal](https://github.com/lmcmicu/mccal.git) by Michael Cufarro
 * [Quick To-Do Pro](http://www.capstralia.com/products/pro) smart software for task management
 
-# Windows
+# Fine Tuning
 
-Notification bubble on Windows requires [**Notifu**](https://www.paralint.com/projects/notifu) application to be installed and available in path. Then bubble will show for notification of events periodically.
+# For Windows
+
+* Notification bubble on Windows requires [**Notifu**](https://www.paralint.com/projects/notifu) application to be installed and available in path. Then bubble will show for notification of events periodically.
+
+* Application can be easily put to tray using the [**RBTray**](http://rbtray.sourceforge.net/) utility.

@@ -7,6 +7,7 @@ require_relative 'lib/timer'
 # global vars
 $datadir = "#{ENV['HOME']}/.zenotifier"
 $events = Events.new
+$height_main_window = 220
 
 class NotifConfiguration
   attr_accessor :ui,:color_background,:color_font
@@ -32,13 +33,14 @@ class NotifConfiguration
         @color_font = "##{th['font']}"
       end
     end
+    $height_main_window -= 30 if !@ui['form field notify display']
   end
 end
 
 $config = NotifConfiguration.new
 
 # this is user interface for events notification
-Shoes.app :height=>230 do
+Shoes.app :height=>$height_main_window do
 
   # check OS type
   case RbConfig::CONFIG['host_os']
@@ -56,7 +58,6 @@ Shoes.app :height=>230 do
     data = File.read('profile/default/events.yaml')
     File.write($events.source_file,data)
   end
-
 
   $events.target_file = $events.source_file
   $events.load
@@ -157,7 +158,7 @@ Shoes.app :height=>230 do
           system "notify-send \"#{message} (by ZenOtifier)\"" if @os == 'linux'
         elsif @os == 'windows'
           # based on notifu tool: https://www.paralint.com/projects/notifu
-          system "notifu /q /m /p ZenOtifier \"#{message}\" /d 2000"
+          system "notifu /q /p ZenOtifier /m \"#{message}\" /d 2000"
         end
       end
     else
