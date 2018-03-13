@@ -1,5 +1,6 @@
 
 class NTimer
+  attr_accessor :period_sec;
 
   def initialize(period_sec)
     set_period(period_sec)

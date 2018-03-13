@@ -63,7 +63,7 @@ Shoes.app :height=>$height_main_window do
   $events.load
   @check_timer = NTimer.new(10)
   @check_timer.set_to_expire
-  notif_highlight_period = $config.ui['default notify period'].to_i
+  notif_highlight_period = $config.ui['flashing reminder period seconds'].to_i
   notif_highlight_period = 60 if notif_highlight_period.nil? or notif_highlight_period<1
   @highlight_notif_timer = NTimer.new(notif_highlight_period)
   @next_time_range_sec = 60*60*24*3
@@ -152,7 +152,7 @@ Shoes.app :height=>$height_main_window do
       if @highlight_notif_timer.expired
         @highlight_notif_timer.arm
         message = "#{@event.what}"
-        puts "Show notification #{message}" if $events.verbose>0
+        puts "Show notification period:#{@highlight_notif_timer.period_sec()}sec #{message}" if $events.verbose>0
         if @os == 'linux'
           # based on ubuntu tool: notify-send
           system "notify-send \"#{message} (by ZenOtifier)\"" if @os == 'linux'
@@ -171,7 +171,8 @@ Shoes.app :height=>$height_main_window do
       @event = $events.what_is_next(now, now + @next_time_range_sec)
       if @event
         time_to_notif = TimeConversions.new.get_sec_from_str(@event.notify_at) - now
-        time_to = "#{time_to_notif/(60*60)}h"
+        time_to = "#{time_to_notif/60}min"
+        time_to = "#{time_to_notif/(60*60)}h" if time_to_notif>60*60*2
         time_to = sprintf("%.1fd",time_to_notif.to_f/(60*60*24)) if time_to_notif>60*60*24
         @event_text.text = "#{time_to}: #{@event.what}"
         @next_info.show if $config.ui['show next event']
@@ -196,11 +197,13 @@ Shoes.app :height=>$height_main_window do
 
   def create_clicked
     if $events.add_from_edits(@edits)
-      alert "Event created"
       # clean @edits after created
+      details = ''
       @edits.keys.each do |key|
+        t = @edits[key].text; details += "\n#{key}:#{t}" if t.length>0
         @edits[key].text = ''
       end
+      alert "Event created:#{details}"
     end
   end
 
