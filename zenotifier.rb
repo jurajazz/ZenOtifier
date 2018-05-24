@@ -166,6 +166,7 @@ Shoes.app :height=>$height_main_window do
       if @event
         puts "Show notification window with event"
         show_window(@event)
+        @check_timer.set_to_expire
         next
       end
       @event = $events.what_is_next(now, now + @next_time_range_sec)
@@ -260,8 +261,14 @@ Shoes.app :height=>$height_main_window do
       end # stack
       keypress do |k|
          puts "Keypress -#{k}-"
-         if k.to_s == "\n"
-           gui_snooze
+         gui_snooze if k.to_s == "\n"
+         if k.to_s == "alt_r"
+           @e.do_repeat
+           close
+         end
+         if k.to_s == "alt_d"
+           @e.do_mark_as_complete(0)
+           close
          end
       end
 
