@@ -8,6 +8,7 @@ is simple to-do list notifier and reminder.
 * Transparent storing format in [YAML](https://en.wikipedia.org/wiki/YAML)
 * Running graphically under Linux, OSX, Windows thanks to  [**Shoes**](http://shoesrb.com/) framework
 
+
 # Installation
 * Download and install [**Shoes**](http://shoesrb.com/downloads/)
 
