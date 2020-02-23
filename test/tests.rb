@@ -47,6 +47,7 @@ puts '---------------------------------------'
 puts "Testing events"
 
 es = Events.new
+es.verbose = 2
 es.target_file='temp/testing_output.yaml'
 p={}
 p['what']=''
@@ -74,25 +75,30 @@ r = es.add_from_params(p)
 !r or throw "unexpected result:#{r}"
 
 puts '---------------------------------------'
-puts "Testing events notification triggering using artifical time used in .check(time)"
+puts "Testing events notification triggering using artifical time used in .get_next_event_2b_notified(time)"
 
 es = Events.new
-es.source_file='temp/testing_output.yaml'
+es.verbose = 2
+es.source_file='temp/testing_output_B.yaml' # make clean file, independent of previous
 es.target_file=es.source_file
+es.save
 time_sec = c.get_now_sec
-!es.check(time_sec) or throw "some notification on empty list"
+!es.get_next_event_2b_notified(time_sec) or throw "some notification on empty list"
 
 p={}
-event_1_name = 'Testing event 1'
+event_1_name = 'Event 1'
+base_time = c.get_now_sec
 p['what']=event_1_name
 p['when']='after 2hours'
+event_1_when = base_time + 60*60*2
 p['notify']='1hour before'
-base_time = c.get_now_sec
+event_1_notify = event_1_when - 60*60*1
 es.reference_time = base_time
-event_1_notify = base_time + 60*60*1
 p['repeat']='every 2weeks'
+event_1_description='event1desctiption'
+p['description']=event_1_description
 r = es.add_from_params(p)
-event_2_name = 'Testing event 2'
+event_2_name = 'Event 2'
 p['what']=event_2_name
 p['when']='in 2months'
 p['notify']='1hour before'
@@ -103,37 +109,37 @@ event_2_notify = c.get_now_sec + 60*60*24*62
 r = es.add_from_params(p)
 !r or throw "unexpected result:#{r}"
 time_tol = 100 # time tollerance (some data are rounded to minutes)
-!es.check(base_time) or throw "some notification, but not expected"
-!es.check(event_1_notify-time_tol) or throw "some notification, but not expected"
-e = es.check(event_1_notify+time_tol) or throw "no notification, but expected"
+!es.get_next_event_2b_notified(base_time) or throw "some notification, but not expected"
+!es.get_next_event_2b_notified(event_1_notify-time_tol) or throw "some notification, but not expected"
+e = es.get_next_event_2b_notified(event_1_notify+time_tol) or throw "no notification, but expected"
 e.what == event_1_name or throw "unexpected event notified"
 puts '------ checking the snooze function'
 e.do_snooze(60*60*2,event_1_notify) # two hours
 es.update_event_after_change
 event_1_notify += 60*60*2 # add snooze period
-!es.check(event_1_notify-time_tol) or throw "some notification, but not expected"
-e = es.check(event_1_notify+time_tol) or throw "no notification, but expected"
+!es.get_next_event_2b_notified(event_1_notify-time_tol) or throw "some notification, but not expected"
+e = es.get_next_event_2b_notified(event_1_notify+time_tol) or throw "no notification, but expected"
 e.what == event_1_name or throw "unexpected event notified"
 puts '------- checking the repeat function'
 e.do_repeat
 es.update_event_after_change
-event_1_notify = base_time + 60*60*24*7*2 + 2*60*60 - 60*60 # two weeks
-!es.check(event_1_notify-time_tol) or throw "some notification, but not expected"
-e = es.check(event_1_notify+time_tol) or throw "no notification, but expected"
-e.do_mark_as_complete(event_1_notify)
+event_1_when += 60*60*24*7*2 - 60*60 # two weeks one hour before
+!es.get_next_event_2b_notified(event_1_when-time_tol) or throw "some notification, but not expected"
+e = es.get_next_event_2b_notified(event_1_when+time_tol) or throw "no notification, but expected"
+e.do_mark_as_complete(event_1_when)
 es.update_event_after_change
-!es.check(event_1_notify+time_tol) or throw "some notification, but not expected"
+!es.get_next_event_2b_notified(event_1_when+time_tol) or throw "some notification, but not expected"
 
 puts '---------------------------------------'
 puts "Testing events save/load"
 es.save
 es2 = Events.new
-es2.source_file='temp/testing_output.yaml'
+es2.source_file='temp/testing_output_B.yaml'
 es2.target_file=es.source_file
 es2.load
-e = es2.check(event_2_notify+time_tol)
+e = es2.get_next_event_2b_notified(event_2_notify+time_tol)
 e or throw "no notification, but expected"
-e.what == event_2_name or throw "unexpected event notified"
+e.what == event_2_name or throw "unexpected event '#{e.what}' notified"
 e.description == event_2_description or throw "unexpected description '#{e.description}'"
 e.do_repeat
 
