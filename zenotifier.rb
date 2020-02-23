@@ -155,7 +155,7 @@ Shoes.app :height=>$height_main_window do
     next if !@check_timer.expired
     @check_timer.arm
     if $events.notification_is_shown
-			@check_timer.set_period(2)
+			@check_timer.set_to_expire
       if @highlight_notif_timer.expired
         @highlight_notif_timer.arm
         message = "#{@event.what}"
@@ -202,7 +202,10 @@ Shoes.app :height=>$height_main_window do
 
   def open_edit_event
     #visit('/snooze_event')
+		puts "Open_edit_event"
     show_window(@event)
+		puts "Timer Set to expire"
+		@check_timer.set_to_expire
   end
 
   def create_clicked
@@ -296,7 +299,6 @@ Shoes.app :height=>$height_main_window do
       end
 
 			animate(1) do
-				puts "Small Window Animate"
 				if $events.is_source_file_changed_after_load
 					puts "Closing small window due to source file changed"
 					$events.load
