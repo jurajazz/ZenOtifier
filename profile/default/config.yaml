@@ -11,6 +11,9 @@ user interface:
   # form fields
   form field notify display: no # or yes
 
+  # beginners gui shows hints (e.g. call Mike)
+  gui_for_beginners: yes
+
   default notify period: 1day # let's do it tomorrow
 
   # next event can be visible in main window

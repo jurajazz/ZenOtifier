@@ -8,7 +8,7 @@ require_relative 'time_conversions'
 # works only in absolute seconds unit
 # ---------------------------------------------------------
 class Event
-  attr_accessor :what,:when,:notify_at,:notify_before,:repeat,:description,:completed,:changed
+  attr_accessor :what,:when,:notify_at,:notify_before,:repeat,:description,:completed,:changed,:index
   def initialize
     @what=''             # string describing the event
     @description=''      # string with additional details
@@ -19,10 +19,11 @@ class Event
     @completed = 0       # 1=completed - do not consider as active
     @conv = TimeConversions.new
     @changed = false     # true if event was change to storage (e.g. when)
+		@index = 0           # referece to @events array
   end
 
   # used for parsing from yaml
-  def from_hash(h)
+  def from_hash(h,index)
     #puts "Event from_hash:#{h}"
     @what = h['what'] if h['what'].to_s.length>0
     @description = h['description'] if h['description'].to_s.length>0
@@ -31,6 +32,7 @@ class Event
     @notify_before = h['notify_before'] if h['notify_before'].to_s.length>0
     @repeat = h['repeat'] if h['repeat'].to_s.length>0
     @completed = h['completed'] if h['completed'].to_s.length>0
+		@index = index
   end
 
   # used for generating for yaml
@@ -64,7 +66,7 @@ class Event
   # plan next repeat
   def do_repeat
     rep = @conv.parse_repeat_time_str(@repeat)
-    puts "do_repeat:#{@repeat} base-when:#{@when} rep:#{rep}"
+    puts "do_repeat:#{@repeat} what:#{@what} base-when:#{@when} rep:#{rep}"
     if rep[:unit] == 'day'
       time = @conv.get_sec_from_str(@when)
       time = time + rep[:value] * 60*60*24
@@ -110,7 +112,8 @@ end
 # works in mixed units
 # ---------------------------------------------------------
 class Events
-  attr_accessor :source_file,:target_file,:reference_time,:notification_is_shown,:event_beeing_notified,:verbose
+  attr_accessor :source_file,:target_file,:reference_time,:notification_is_shown,:event_beeing_notified,:verbose,:remaining_items_2b_notified
+
   def initialize
     @verbose=0
     puts "Events.initialize" if @verbose>0
@@ -120,8 +123,7 @@ class Events
     @events = []
     @reference_time=@conv.get_now_sec
     @event_beeing_notified
-    @event_beeing_notified_index
-    @event_next_index
+		@remaining_items_2b_notified
     @notification_is_shown=false  # if true - checking of events is stopped because structure can be changed by notification action (e.g. snooze)
     @last_source_file_time_loaded=0
   end
@@ -137,7 +139,7 @@ class Events
 
   def update_event_after_change
     return if !@event_beeing_notified.changed
-    @events[@event_beeing_notified_index] = @event_beeing_notified.to_hash
+    @events[@event_beeing_notified.index] = @event_beeing_notified.to_hash
     save
   end
 
@@ -232,25 +234,34 @@ class Events
   end
 
   # immediately check (e.g. used by tests)
-  def check(time_sec)
+  def get_next_event_2b_notified(time_sec)
+		e = get_all_events_to_be_notified(time_sec)
+		if !e.nil? and e.count
+			@event_beeing_notified = e[0]
+			return @event_beeing_notified
+		end
+	end
+
+	def get_all_events_to_be_notified(time_sec)
     return if @notification_is_shown
     if is_source_file_changed_after_load
       load # reload
     end
+		notif_events = []
     time_str = @conv.get_str_from_sec(time_sec)
     puts "CheckEvents '#{time_str}'" if @verbose>0
     @events.each_with_index do |ey,index|
       event = Event.new
-      event.from_hash(ey)
+      event.from_hash(ey,index)
       next if event.completed == 1 # skip completed events
       puts "Checking event '#{event.what}' '#{event.notify_at}'" if @verbose>0
       if time_str >= event.notify_at
-        puts "Event #{event.what} should be notified now." if @verbose>0
-        @event_beeing_notified = event
-        @event_beeing_notified_index = index
-        return @event_beeing_notified
+        puts "Event '#{event.what}' should be notified now." if @verbose>0
+				notif_events.push(event)
       end
     end # @events.each
+		@remaining_items_2b_notified = notif_events.count
+		return notif_events
     nil
   end
 
@@ -264,17 +275,16 @@ class Events
     @event_beeing_notified=nil
     @events.each_with_index do |ey,index|
       event = Event.new
-      event.from_hash(ey)
+      event.from_hash(ey,index)
       next if event.completed == 1 # skip completed events
       next if !(event.notify_at > time_from_str and event.notify_at < time_to_str)
       #puts "Checking what_is_next '#{event.what}' '#{event.notify_at}' max:'#{time_to_str}'" if @verbose>0
       if @event_beeing_notified.nil?
+				# set first event as beeing notified
         @event_beeing_notified = event
-        @event_beeing_notified_index = index
       else
         if event.notify_at < @event_beeing_notified.notify_at
           @event_beeing_notified = event
-          @event_beeing_notified_index = index
         end
       end
     end # @events.each

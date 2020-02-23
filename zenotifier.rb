@@ -1,3 +1,4 @@
+#/usr/bin/ruby
 require 'yaml'
 require 'rbconfig'
 require_relative 'lib/events'
@@ -10,9 +11,10 @@ $events = Events.new
 $height_main_window = 220
 
 class NotifConfiguration
-  attr_accessor :ui,:color_background,:color_font
+  attr_accessor :ui,:color_background,:color_font,:gui_for_beginners
 
   def initialize
+		@gui_for_beginners = false
     @config_file = "#{$datadir}/config.yaml"
     puts "Config file #{@config_file}"
     if !File.exist?(@config_file)
@@ -24,6 +26,8 @@ class NotifConfiguration
     @config = YAML.load_file(@config_file) or return
     puts "Config #{@config}"
     @ui = @config['user interface'] or return
+		gui_for_beginners = @ui['gui_for_beginners']
+		@gui_for_beginners=true if gui_for_beginners
     theme_name = @ui['theme']
     if theme_name and theme_name.length
       # load colors
@@ -61,7 +65,7 @@ Shoes.app :height=>$height_main_window do
 
   $events.target_file = $events.source_file
   $events.load
-  @check_timer = NTimer.new(10)
+  @check_timer = NTimer.new(2)
   @check_timer.set_to_expire
   notif_highlight_period = $config.ui['flashing reminder period seconds'].to_i
   notif_highlight_period = 60 if notif_highlight_period.nil? or notif_highlight_period<1
@@ -111,7 +115,9 @@ Shoes.app :height=>$height_main_window do
           @edits[i[1]].hide
         else
           @edits[i[1]] = edit_line :left=> @edit_left, :width=>@edit_width, top: @top
-          t = para i[2]; t.style :left => @desc_left, top: @top
+					if $config.gui_for_beginners
+            t = para i[2]; t.style :left => @desc_left, top: @top
+					end
         end
         @top += @line_h
       end
@@ -149,6 +155,7 @@ Shoes.app :height=>$height_main_window do
     next if !@check_timer.expired
     @check_timer.arm
     if $events.notification_is_shown
+			@check_timer.set_period(2)
       if @highlight_notif_timer.expired
         @highlight_notif_timer.arm
         message = "#{@event.what}"
@@ -162,23 +169,25 @@ Shoes.app :height=>$height_main_window do
         end
       end
     else
-      @event = $events.check(now)
+      @event = $events.get_next_event_2b_notified(now)
       if @event
         puts "Show notification window with event"
         show_window(@event)
         @check_timer.set_to_expire
         next
-      end
-      @event = $events.what_is_next(now, now + @next_time_range_sec)
-      if @event
-        time_to_notif = TimeConversions.new.get_sec_from_str(@event.notify_at) - now
-        time_to = "#{time_to_notif/60}min"
-        time_to = "#{time_to_notif/(60*60)}h" if time_to_notif>60*60*2
-        time_to = sprintf("%.1fd",time_to_notif.to_f/(60*60*24)) if time_to_notif>60*60*24
-        @event_text.text = "#{time_to}: #{@event.what}"
-        @next_info.show if $config.ui['show next event']
-      else
-        @next_info.hide
+			else
+	      @event = $events.what_is_next(now, now + @next_time_range_sec)
+	      if @event
+	        time_to_notif = TimeConversions.new.get_sec_from_str(@event.notify_at) - now
+	        time_to = "#{time_to_notif/60}min"
+	        time_to = "#{time_to_notif/(60*60)}h" if time_to_notif>60*60*2
+	        time_to = sprintf("%.1fd",time_to_notif.to_f/(60*60*24)) if time_to_notif>60*60*24
+	        @event_text.text = "#{time_to}: #{@event.what}"
+	        @next_info.show if $config.ui['show next event']
+	      else
+        	@next_info.hide
+				end
+				@check_timer.set_period(30)
       end
     end
   end # animate
@@ -224,7 +233,7 @@ Shoes.app :height=>$height_main_window do
           button "Snooze" do
             gui_snooze
           end
-          para "(30min,1day,1week)"
+          para "(30min,1day,1week)" if $config.gui_for_beginners
           if @e.should_repeat
             button "Done (repeat: #{@e.repeat})" do
               @e.do_repeat
@@ -235,12 +244,18 @@ Shoes.app :height=>$height_main_window do
               @e.do_mark_as_complete(0)
               close
             end
-          end
-          button "Done" do
-            @e.do_mark_as_complete(0)
-            close
-          end
+          else
+						# no repeat is defined
+            button "Done" do
+              @e.do_mark_as_complete(0)
+              close
+            end
+					end
         end # flow
+				# show information about remaining items
+				if $events.remaining_items_2b_notified>1
+				  t = para "Remaining: #{$events.remaining_items_2b_notified-1}"; #t.style :left => 10, top: 50
+				end
         if @e.description.length>0
           flow do
             @edit_description = edit_box width: 300, height: 80
@@ -279,6 +294,15 @@ Shoes.app :height=>$height_main_window do
         @e.do_snooze(time,0)
         close
       end
+
+			animate(1) do
+				puts "Small Window Animate"
+				if $events.is_source_file_changed_after_load
+					puts "Closing small window due to source file changed"
+					$events.load
+					close
+				end
+			end
 
     end # window
   end # def show_window
